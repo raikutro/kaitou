@@ -27,6 +27,7 @@ pub struct Kaitou {
 }
 
 type ScalarCalcFn = fn(&f32, &f32) -> f32;
+type SemanticSimilarityModifierFn = fn(&f32) -> f32;
 
 pub struct KaitouConfig {
 	// Model files
@@ -40,7 +41,9 @@ pub struct KaitouConfig {
 	// Language Model Settings
 	pub analogy_top_k: u32,
 	pub semantic_similarity_minimum: f32,
-	pub scalar_func: Option<ScalarCalcFn>
+	pub distance_idf_cross_convergence: Option<f32>,
+	pub scalar_func: Option<ScalarCalcFn>,
+	pub semantic_similarity_matrix_modifier_func: Option<SemanticSimilarityModifierFn>,
 }
 
 impl Kaitou {
@@ -102,13 +105,14 @@ impl Kaitou {
 	pub fn train(&mut self, input: &String, output: &String) -> TokenResult<u32> {
 		let input_tokens = self.tokenizer.encode(input.as_str(), false)?;
 		let output_tokens = self.tokenizer.encode(output.as_str(), false)?;
-		println!("{:?} {:?}", input_tokens.get_ids(), output_tokens.get_ids());
+		// println!("{:?} {:?}", input_tokens.get_ids(), output_tokens.get_ids());
 		let sequence_id = self.exchanges.len();
 
 		self.exchanges.push(
 			SequenceExchange::new(
 				(input_tokens.get_ids().to_vec(), output_tokens.get_ids().to_vec()),
-				&self.w2v
+				&self.w2v,
+				&self
 			)
 		);
 
@@ -164,7 +168,7 @@ impl Kaitou {
 				// If the model was provided a scalar function, use it.
 				let scalar = match &self.config.scalar_func {
 					Some(func) => func(semantic_connection_strength, &response_template_token_inverse_frequency_score),
-					None => (semantic_connection_strength + response_template_token_inverse_frequency_score)
+					None => semantic_connection_strength + response_template_token_inverse_frequency_score
 				};
 
 				// If the scalar function fails, skip this token.
@@ -177,51 +181,73 @@ impl Kaitou {
 				let analogy_vec = normalize_vec(&add_vec(&old_output_token, &scaled_displacement_vector));
 				let mut closest_vectors: Vec<(String, &Vec<f32>, f32)> = self.w2v.get_nearest_vectors(&analogy_vec, self.config.analogy_top_k);
 
-				// Filter out all of the tokens that were used to create the analogy (Oo, In, Io)
-				// The only exception is to the In. If the SCS is 1 then the In will stay.
-				closest_vectors.retain(|vec| {
-					let token_id: u32 = vec.0.parse().unwrap();
-					!(
-						&token_id == &response_template[i] ||
-						&token_id == &change.1 ||
-						&token_id == &template_in_seq[change.0]
-					)
-					|| (&token_id == &change.1 && semantic_connection_strength > &0.8)
-				});
-
-				// Skip this token if there are no vectors
-				if closest_vectors.len() == 0 {
-					continue;
-				}
-
-				// Calculate a cross feature between each tokens idf and distance to the analogy vector
-				// Also calculates the mean cross value
-				let mut token_idf_mean = 0.0;
-				let mut token_dist_mean = 0.0;
-				for (token, _, dist) in &closest_vectors {
-					let token_idf = self.inverse_frequency_score(token.parse().unwrap());
-					token_dist_mean += dist;
-					token_idf_mean += token_idf;
-					// println!("{:?}: {:?}", self.tokenizer.id_to_token(token.parse().unwrap()), dist * token_idf);
-				}
-				token_dist_mean /= closest_vectors.len() as f32;
-				token_idf_mean /= closest_vectors.len() as f32;
-				let mean_cross = token_idf_mean * token_dist_mean;
-				// println!("IDF-Distance Mean Cross: {:?}", mean_cross);
-
-				// If the top analogy's similarity is more than .8, use it.
-				// If not, find the token that is closest to the IDF-Distance Mean Cross feature.
-				let mut new_output_token = closest_vectors[0].0.clone(); 
+				// If the top analogy's similarity is less than .8, find a better word.
+				let mut new_output_token = closest_vectors[0].0.clone();
 				if closest_vectors[0].2 < 0.8 {
+					// Filter out all of the tokens that were used to create the analogy (Oo, In, Io)
+					closest_vectors.retain(|vec| {
+						let token_id: u32 = vec.0.parse().unwrap();
+						!(
+							&token_id == &response_template[i] ||
+							&token_id == &change.1 ||
+							&token_id == &template_in_seq[change.0]
+						)
+					});
+
+					// Skip this token if there are no vectors
+					if closest_vectors.len() == 0 {
+						continue;
+					}
+
+					// Calculate a cross feature between each tokens idf and distance to the analogy vector
+					// Also calculates the mean cross value
+					
+					// Normalize values
+					
+					let initial_similarity = closest_vectors[0].2;
+					let initial_idf_score = self.inverse_frequency_score(closest_vectors[0].0.parse().unwrap());
+
+					// Calculate min and max
+					let min_token_similarity = closest_vectors.iter().fold(initial_similarity, |acc, e| acc.min(e.2));
+					let max_token_similarity = closest_vectors.iter().fold(initial_similarity, |acc, e| acc.max(e.2));
+					let min_token_idf = closest_vectors.iter().fold(
+						initial_idf_score,
+						|acc, e| acc.min(self.inverse_frequency_score(e.0.parse().unwrap()))
+					);
+					let max_token_idf = closest_vectors.iter().fold(
+						initial_idf_score,
+						|acc, e| acc.max(self.inverse_frequency_score(e.0.parse().unwrap()))
+					);
+
+					let mut normalized_closest_vectors = vec![];
+					for (token, _, similarity) in &closest_vectors {
+						normalized_closest_vectors.push((
+							token,
+							map_range((min_token_similarity, max_token_similarity), (0.0, 1.0), *similarity),
+							map_range((min_token_idf, max_token_idf), (0.0, 1.0), self.inverse_frequency_score(token.parse().unwrap()))
+						));
+					}
+
+					let mut mean_cross = 0.0;
+					for (token, idf, similarity) in &normalized_closest_vectors {
+						mean_cross += similarity * idf;
+						println!("{:?}: {:?}", self.tokenizer.id_to_token(token.parse().unwrap()), similarity * idf);
+					}
+					mean_cross = match self.config.distance_idf_cross_convergence {
+						Some(n) => n,
+						None => mean_cross / closest_vectors.len() as f32
+					};
+					println!("IDF-Distance Mean Cross: {:?}", mean_cross);
+
+					// Find the token that is closest to the IDF-Distance Mean Cross feature.
 					let mut lowest_deviation_token = new_output_token.clone();
 					let mut lowest_deviation = 1.0;
 
-					for (token, _, dist) in &closest_vectors {
-						let token_idf = self.inverse_frequency_score(token.parse().unwrap());
-						let deviation = (mean_cross - (dist * token_idf)).abs();
+					for (token, idf, similarity) in &normalized_closest_vectors {
+						let deviation = (mean_cross - (similarity * idf)).abs();
 						if deviation < lowest_deviation {
 							lowest_deviation = deviation;
-							lowest_deviation_token = token.clone();
+							lowest_deviation_token = token.to_string();
 						}
 					}
 
@@ -229,14 +255,14 @@ impl Kaitou {
 				}
 
 				let new_output_token: u32 = new_output_token.parse().unwrap();
-				// println!(
-				// 	"{:?} + ({:?} - {:?}){:?} = {:?}",
-				// 	self.tokenizer.id_to_token(response_template[i]).unwrap(),
-				// 	self.tokenizer.id_to_token(change.1).unwrap(),
-				// 	self.tokenizer.id_to_token(template_in_seq[change.0]).unwrap(),
-				// 	scalar,
-				// 	self.tokenizer.id_to_token(new_output_token).unwrap()
-				// );
+				println!(
+					"{:?} + ({:?} - {:?}){:?} = {:?}",
+					self.tokenizer.id_to_token(response_template[i]).unwrap(),
+					self.tokenizer.id_to_token(change.1).unwrap(),
+					self.tokenizer.id_to_token(template_in_seq[change.0]).unwrap(),
+					scalar,
+					self.tokenizer.id_to_token(new_output_token).unwrap()
+				);
 
 				// Write data to the analysis dump if it exists
 				if let Some(file) = &mut self.analysis_response_writer {
@@ -276,7 +302,7 @@ pub struct SequenceExchange {
 }
 
 impl SequenceExchange {
-	pub fn new(sequence: (Vec<u32>, Vec<u32>), w2v: &Word2Vec) -> Self {
+	pub fn new(sequence: (Vec<u32>, Vec<u32>), w2v: &Word2Vec, model: &Kaitou) -> Self {
 		let matrix_width: u32 = sequence.0.len() as u32;
 		let matrix_size: usize = sequence.0.len() * sequence.1.len();
 		let mut exchange = Self {
@@ -288,10 +314,17 @@ impl SequenceExchange {
 
 		for i in 0..exchange.input.len() {
 			for j in 0..exchange.output.len() {
-				exchange.matrix_set(i as u32, j as u32, w2v.similarity(
+				let mut similarity = w2v.similarity(
 					&(exchange.input[i].to_string()),
 					&(exchange.output[j].to_string())
-				).unwrap_or(0.0));
+				).unwrap_or(0.0);
+
+				similarity = match &model.config.semantic_similarity_matrix_modifier_func {
+					Some(func) => func(&similarity),
+					None => similarity
+				};
+
+				exchange.matrix_set(i as u32, j as u32, similarity);
 			}
 		}
 
@@ -310,6 +343,10 @@ impl SequenceExchange {
 fn round_prec(x: f32, decimals: u32) -> f32 {
 	let y = 10i32.pow(decimals) as f32;
 	(x * y).floor() / y
+}
+
+fn map_range(from_range: (f32, f32), to_range: (f32, f32), s: f32) -> f32 {
+    to_range.0 + (s - from_range.0) * (to_range.1 - to_range.0) / (from_range.1 - from_range.0)
 }
 
 impl std::fmt::Debug for SequenceExchange {

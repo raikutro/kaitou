@@ -747,6 +747,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "tokenizers",
+ "wordnet",
 ]
 
 [[package]]
@@ -1852,6 +1853,12 @@ checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
 dependencies = [
  "winapi",
 ]
+
+[[package]]
+name = "wordnet"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "298dd98161f0bdf74da6a26be3d90174300389fb314cfa9aad64cdc116033c01"
 
 [[package]]
 name = "xattr"

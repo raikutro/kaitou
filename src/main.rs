@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
 use kaitou::word2vec::load_word2vec;
 use kaitou::model::Kaitou;
 use kaitou::model::KaitouConfig;
@@ -7,20 +9,34 @@ fn main() {
 	// word2vec_test();
 
 	let mut model = Kaitou::create(KaitouConfig {
-		w2v_path: String::from("../../training/models/wiki_200_skipgram/w2v.txt"),
-		tokenizer_path: String::from("../../training/models/wiki_200_skipgram/tokens.json"),
-		frequency_path: String::from("../../training/models/wiki_200_skipgram/frequency.txt"),
+		w2v_path: String::from("../../training/models/wiki_300_skipgram/w2v.txt"),
+		tokenizer_path: String::from("../../training/models/wiki_300_skipgram/tokens.json"),
+		frequency_path: String::from("../../training/models/wiki_300_skipgram/frequency.txt"),
 		analysis_folder_path: Some(String::from("../analysis")),
 
-		analogy_top_k: 10,
-		semantic_similarity_minimum: 0.35,
+		analogy_top_k: 20,
+		semantic_similarity_minimum: 0.25,
+		distance_idf_cross_convergence: None,
 		scalar_func: Some(|x, y| {
-			// This equation was derived by analyzing the model dump analytics and performing
-			// a multiple linear regression on the similarity and IDF score -> scalar.
-			(-2.6153+(9.5273*x)+(46.8842*y)-(6.9402*x*x)-(20.8846*x*y)-(99.2212*y*y))
-				.max(0.0).min(1.0) * 1.5 // Clamp the values
+			1.0
+		}),
+		semantic_similarity_matrix_modifier_func: Some(|x| {
+			*x
 		})
 	}).unwrap();
+
+	let training_file = String::from("../../extraction/clean/caring.txt");
+	let f = File::open(training_file).expect("Unable to open corpus file");
+	let f = BufReader::new(f);
+
+	for line in f.lines() {
+		let safe_line = line.expect("Unable to read line");
+		let pair: Vec<&str> = safe_line.split("|||").collect();
+		model.train(
+			&String::from(pair[0]),
+			&String::from(pair[1])
+		).unwrap();
+	}
 
 	model.train(
 		&String::from("What is your favorite color?"),
@@ -35,20 +51,14 @@ fn main() {
 		&String::from("falcons are cool.")
 	).unwrap();
 
-	println!("{:?}", model.exchanges);
+	// println!("{:?}", model.exchanges);
 
 	let questions = vec![
-		String::from("What is your favorite animal?"),
-		String::from("What is your favorite food?"),
-		String::from("your favorite bird?"),
-		String::from("your favorite color?"),
-		String::from("What is the best animal?"),
-		String::from("What's your favorite drink?"),
-		String::from("What's your favorite mood?"),
-		String::from("What's your favorite lunch meal?"),
-		String::from("Are pancakes your favorite food?"),
-		String::from("What's better than your favorite color?"),
-		String::from("Are you sentient?"),
+		String::from("Hey"),
+		String::from("My girlfriend left me..."),
+		String::from("I'm sad."),
+		String::from("I'm back from work"),
+		String::from("It sucked")
 	];
 
 	for question in questions {
