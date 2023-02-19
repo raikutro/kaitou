@@ -9,9 +9,9 @@ fn main() {
 	// word2vec_test();
 
 	let mut model = Kaitou::create(KaitouConfig {
-		w2v_path: String::from("../../training/models/wiki_200_skipgram/w2v.txt"),
-		tokenizer_path: String::from("../../training/models/wiki_200_skipgram/tokens.json"),
-		frequency_path: String::from("../../training/models/wiki_200_skipgram/frequency.txt"),
+		w2v_path: String::from("../../training/models/wiki_300_skipgram/w2v.txt"),
+		tokenizer_path: String::from("../../training/models/wiki_300_skipgram/tokens.json"),
+		frequency_path: String::from("../../training/models/wiki_300_skipgram/frequency.txt"),
 		analysis_folder_path: Some(String::from("../analysis")),
 
 		analogy_top_k: 20,
@@ -38,34 +38,53 @@ fn main() {
 		).unwrap();
 	}
 
-	model.train(
-		&String::from("What is your favorite color?"),
-		&String::from("My favorite color is white.")
-	).unwrap();
-	model.train(
-		&String::from("What is your favorite food?"),
-		&String::from("I like pizza.")
-	).unwrap();
-	model.train(
-		&String::from("your favorite bird?"),
-		&String::from("falcons are cool.")
-	).unwrap();
+	loop {
+		let mut prompt = String::new();
 
-	// println!("{:?}", model.exchanges);
+		io::stdin()
+			.read_line(&mut prompt)
+			.expect("Failed to read line");
 
-	let questions = vec![
-		String::from("Hey"),
-		String::from("My girlfriend left me..."),
-		String::from("I'm sad."),
-		String::from("I'm back from work"),
-		String::from("What should I do?"),
-		String::from("Who are you?"),
-		String::from("What is a vtuber?"),
-	];
-
-	for question in questions {
-		println!("Q: {}, A: {}", question, model.respond(&question).unwrap());
+		if prompt.starts_with(&String::from("R:")) {
+			println!("{}", model.respond(&String::from(&prompt[2..])).unwrap());
+		} else if prompt.starts_with(&String::from("T:")) {
+			let training_exchange = String::from(&prompt[2..]);
+			let pair: Vec<&str> = training_exchange.split("|||").collect();
+			model.train(
+				&String::from(pair[0]),
+				&String::from(pair[1])
+			).unwrap();
+		}
 	}
+	
+	// model.train(
+	// 	&String::from("What is your favorite color?"),
+	// 	&String::from("My favorite color is white.")
+	// ).unwrap();
+	// model.train(
+	// 	&String::from("What is your favorite food?"),
+	// 	&String::from("I like pizza.")
+	// ).unwrap();
+	// model.train(
+	// 	&String::from("your favorite bird?"),
+	// 	&String::from("falcons are cool.")
+	// ).unwrap();
+
+	// // println!("{:?}", model.exchanges);
+
+	// let questions = vec![
+	// 	String::from("Hey"),
+	// 	String::from("My girlfriend left me..."),
+	// 	String::from("I'm sad."),
+	// 	String::from("I'm back from work"),
+	// 	String::from("What should I do?"),
+	// 	String::from("Who are you?"),
+	// 	String::from("What is a vtuber?"),
+	// ];
+
+	// for question in questions {
+	// 	println!("Q: {}, A: {}", question, model.respond(&question).unwrap());
+	// }
 }
 
 fn word2vec_test() {

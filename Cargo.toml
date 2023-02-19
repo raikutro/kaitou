@@ -15,3 +15,8 @@ rand = "0.8.5"
 edition = "2021"
 name = "kaitou"
 path = "src/main.rs"
+
+[[bin]]
+edition = "2021"
+name = "sandbox"
+path = "src/sandbox.rs"

@@ -165,11 +165,13 @@ impl Kaitou {
 					continue;
 				}
 
+				let default_word_vector: Vec<f32> = vec![0.0f32; self.w2v.embed_size as usize];
+
 				// Analogy Equation
 				// Oo + (In - Io)λ = On
-				let old_output_token = self.w2v.get_vector(&(response_template[i].to_string())).unwrap();
-				let new_input_token = self.w2v.get_vector(&(change.1.to_string())).unwrap();
-				let old_input_token = self.w2v.get_vector(&(template_in_seq[change.0].to_string())).unwrap();
+				let old_output_token = self.w2v.get_vector(&(response_template[i].to_string())).unwrap_or(&default_word_vector);
+				let new_input_token = self.w2v.get_vector(&(change.1.to_string())).unwrap_or(&default_word_vector);
+				let old_input_token = self.w2v.get_vector(&(template_in_seq[change.0].to_string())).unwrap_or(&default_word_vector);
 
 				// If the model was provided a scalar function, use it.
 				let scalar = match &self.config.scalar_func {
