@@ -44,6 +44,17 @@ fn main() {
 			.read_line(&mut prompt)
 			.expect("Failed to read line");
 
-		println!("{}", model.respond(&prompt).unwrap());
+		if prompt.starts_with(&String::from("R:")) {
+			println!("{}", model.respond(&String::from(&prompt[2..])).unwrap());
+		} else if prompt.starts_with(&String::from("T:")) {
+			let training_exchange = String::from(&prompt[2..]);
+			let pair: Vec<&str> = training_exchange.split("|||").collect();
+			model.train(
+				&String::from(pair[0]),
+				&String::from(pair[1])
+			).unwrap();
+		} else {
+			println!("{}", "ERR: Invalid Request");
+		}
 	}
 }
