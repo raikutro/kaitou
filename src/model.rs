@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::io::Write;
 use std::collections::HashMap;
 use std::time::{SystemTime};
+use rand::Rng;
 
 use crate::word2vec::Word2Vec;
 use crate::word2vec::load_word2vec;
@@ -128,13 +129,18 @@ impl Kaitou {
 		distances.sort_unstable_by(|a, b| (a.0 as u32).cmp(&(b.0 as u32)));
 		// println!("{:?}", distances);
 
-		let exchange_index = distances[0].1;
+		let chosen_distances: Vec<(usize, usize)> = distances[0..5].to_vec();
+		let chosen_index = rand::thread_rng().gen_range(1..=5);
+
+		let exchange_index = distances[chosen_index].1;
 		let template_in_seq = &self.exchanges[exchange_index].input;
 		let (_, leven_matrix) = levenshtein::distance(&template_in_seq, &input_tokens);
 		let levenshtein_edits = levenshtein::generate_edits(&template_in_seq, &input_tokens, &leven_matrix).unwrap();
 		let response_template = &self.exchanges[exchange_index].output;
 
 		let mut response_tokens = response_template.clone();
+
+		// println!("{:?}", &self.exchanges[exchange_index]);
 
 		for edit in levenshtein_edits {
 			let change: (usize, u32) = match edit {
@@ -181,6 +187,13 @@ impl Kaitou {
 				let analogy_vec = normalize_vec(&add_vec(&old_output_token, &scaled_displacement_vector));
 				let mut closest_vectors: Vec<(String, &Vec<f32>, f32)> = self.w2v.get_nearest_vectors(&analogy_vec, self.config.analogy_top_k);
 
+				if (
+					!self.tokenizer.id_to_token(response_template[i]).unwrap().chars().all(char::is_alphanumeric) ||
+					!self.tokenizer.id_to_token(template_in_seq[change.0]).unwrap().chars().all(char::is_alphanumeric)
+				) {
+					continue;
+				}
+
 				// If the top analogy's similarity is less than .8, find a better word.
 				let mut new_output_token = closest_vectors[0].0.clone();
 				if closest_vectors[0].2 < 0.8 {
@@ -202,7 +215,7 @@ impl Kaitou {
 					// Calculate a cross feature between each tokens idf and distance to the analogy vector
 					// Also calculates the mean cross value
 					
-					// Normalize values
+					// --- Normalize values ---
 					
 					let initial_similarity = closest_vectors[0].2;
 					let initial_idf_score = self.inverse_frequency_score(closest_vectors[0].0.parse().unwrap());
@@ -231,13 +244,13 @@ impl Kaitou {
 					let mut mean_cross = 0.0;
 					for (token, idf, similarity) in &normalized_closest_vectors {
 						mean_cross += similarity * idf;
-						println!("{:?}: {:?}", self.tokenizer.id_to_token(token.parse().unwrap()), similarity * idf);
+						// println!("{:?}: {:?}", self.tokenizer.id_to_token(token.parse().unwrap()), similarity * idf);
 					}
 					mean_cross = match self.config.distance_idf_cross_convergence {
 						Some(n) => n,
 						None => mean_cross / closest_vectors.len() as f32
 					};
-					println!("IDF-Distance Mean Cross: {:?}", mean_cross);
+					// println!("IDF-Distance Mean Cross: {:?}", mean_cross);
 
 					// Find the token that is closest to the IDF-Distance Mean Cross feature.
 					let mut lowest_deviation_token = new_output_token.clone();
@@ -246,8 +259,10 @@ impl Kaitou {
 					for (token, idf, similarity) in &normalized_closest_vectors {
 						let deviation = (mean_cross - (similarity * idf)).abs();
 						if deviation < lowest_deviation {
-							lowest_deviation = deviation;
-							lowest_deviation_token = token.to_string();
+							// if !self.tokenizer.id_to_token(token).contains(".") && !self.tokenizer.id_to_token(token).contains("'") {
+								lowest_deviation = deviation;
+								lowest_deviation_token = token.to_string();
+							// }
 						}
 					}
 
@@ -255,14 +270,14 @@ impl Kaitou {
 				}
 
 				let new_output_token: u32 = new_output_token.parse().unwrap();
-				println!(
-					"{:?} + ({:?} - {:?}){:?} = {:?}",
-					self.tokenizer.id_to_token(response_template[i]).unwrap(),
-					self.tokenizer.id_to_token(change.1).unwrap(),
-					self.tokenizer.id_to_token(template_in_seq[change.0]).unwrap(),
-					scalar,
-					self.tokenizer.id_to_token(new_output_token).unwrap()
-				);
+				// println!(
+				// 	"{:?} + ({:?} - {:?}){:?} = {:?}",
+				// 	self.tokenizer.id_to_token(response_template[i]).unwrap(),
+				// 	self.tokenizer.id_to_token(change.1).unwrap(),
+				// 	self.tokenizer.id_to_token(template_in_seq[change.0]).unwrap(),
+				// 	scalar,
+				// 	self.tokenizer.id_to_token(new_output_token).unwrap()
+				// );
 
 				// Write data to the analysis dump if it exists
 				if let Some(file) = &mut self.analysis_response_writer {

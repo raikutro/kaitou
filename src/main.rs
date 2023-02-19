@@ -5,17 +5,16 @@ use kaitou::model::Kaitou;
 use kaitou::model::KaitouConfig;
 
 fn main() {
-	println!("{}", std::env::current_dir().unwrap().display());
-	// word2vec_test();
+	let args: Vec<String> = std::env::args().collect();
 
 	let mut model = Kaitou::create(KaitouConfig {
-		w2v_path: String::from("../../training/models/wiki_300_skipgram/w2v.txt"),
-		tokenizer_path: String::from("../../training/models/wiki_300_skipgram/tokens.json"),
-		frequency_path: String::from("../../training/models/wiki_300_skipgram/frequency.txt"),
-		analysis_folder_path: Some(String::from("../analysis")),
+		w2v_path: String::from(&args[1]),
+		tokenizer_path: String::from(&args[2]),
+		frequency_path: String::from(&args[3]),
+		analysis_folder_path: None,
 
 		analogy_top_k: 20,
-		semantic_similarity_minimum: 0.25,
+		semantic_similarity_minimum: 0.35,
 		distance_idf_cross_convergence: None,
 		scalar_func: Some(|x, y| {
 			1.0
@@ -25,7 +24,7 @@ fn main() {
 		})
 	}).unwrap();
 
-	let training_file = String::from("../../extraction/clean/caring.txt");
+	let training_file = String::from(&args[4]);
 	let f = File::open(training_file).expect("Unable to open corpus file");
 	let f = BufReader::new(f);
 
@@ -38,49 +37,13 @@ fn main() {
 		).unwrap();
 	}
 
-	model.train(
-		&String::from("What is your favorite color?"),
-		&String::from("My favorite color is white.")
-	).unwrap();
-	model.train(
-		&String::from("What is your favorite food?"),
-		&String::from("I like pizza.")
-	).unwrap();
-	model.train(
-		&String::from("your favorite bird?"),
-		&String::from("falcons are cool.")
-	).unwrap();
+	loop {
+		let mut prompt = String::new();
 
-	// println!("{:?}", model.exchanges);
+		io::stdin()
+			.read_line(&mut prompt)
+			.expect("Failed to read line");
 
-	let questions = vec![
-		String::from("Hey"),
-		String::from("My girlfriend left me..."),
-		String::from("I'm sad."),
-		String::from("I'm back from work"),
-		String::from("It sucked")
-	];
-
-	for question in questions {
-		println!("Q: {}, A: {}", question, model.respond(&question).unwrap());
+		println!("{}", model.respond(&prompt).unwrap());
 	}
-}
-
-fn word2vec_test() {
-	let w2v_result = load_word2vec(&String::from("../example_data/w2v_model.txt"));
-
-	let w2v = match w2v_result {
-		Ok(model) => model,
-		Err(e) => panic!("Problem opening the model file: {:?}", e)
-	};
-
-	println!("Model: {} | First Vector: {:?}", w2v, w2v.get_vector("the"));
-	println!("Similarity: {:?}", w2v.similarity("the", "i"));
-
-	// let test_vector = match w2v.get_vector("the") {
-	// 	Some(v) => v,
-	// 	None => panic!("Invalid vector")
-	// };
-	// println!("Closest vectors: {:?}", w2v.get_nearest_vectors(test_vector, 10));
-	println!("Analogy: {:?}", w2v.analogy("suisei", "hololive", "delta", 10));
 }

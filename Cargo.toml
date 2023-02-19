@@ -9,7 +9,9 @@ edition = "2021"
 tokenizers = "0.13.2"
 dyn-fmt = "0.3.0"
 levenshtein-diff = "0.2.4"
-rmp-serde = "1.0.91"
-serde = "1.0.152"
-serde_derive = "1.0.152"
-wordnet = "0.1.2"
+rand = "0.8.5"
+
+[[bin]]
+edition = "2021"
+name = "kaitou"
+path = "src/main.rs"
