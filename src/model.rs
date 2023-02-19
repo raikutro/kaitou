@@ -129,10 +129,10 @@ impl Kaitou {
 		distances.sort_unstable_by(|a, b| (a.0 as u32).cmp(&(b.0 as u32)));
 		// println!("{:?}", distances);
 
-		let chosen_distances: Vec<(usize, usize)> = distances[0..2].to_vec();
-		let chosen_index = rand::thread_rng().gen_range(0..=2);
+		// let chosen_distances: Vec<(usize, usize)> = distances[0..2].to_vec();
+		// let chosen_index = rand::thread_rng().gen_range(0..=2);
 
-		let exchange_index = distances[chosen_index].1;
+		let exchange_index = distances[0].1;
 		let template_in_seq = &self.exchanges[exchange_index].input;
 		let (_, leven_matrix) = levenshtein::distance(&template_in_seq, &input_tokens);
 		let levenshtein_edits = levenshtein::generate_edits(&template_in_seq, &input_tokens, &leven_matrix).unwrap();
