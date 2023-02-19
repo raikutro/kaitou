@@ -53,8 +53,6 @@ fn main() {
 				&String::from(pair[0]),
 				&String::from(pair[1])
 			).unwrap();
-		} else {
-			println!("{}", "ERR: Invalid Request");
 		}
 	}
 }
